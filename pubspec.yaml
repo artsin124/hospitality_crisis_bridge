@@ -1,0 +1,29 @@
+name: hospitality_crisis_bridge
+description: A high-fidelity crisis management system for Himalayan nodes.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  firebase_core: ^4.7.0
+  cloud_firestore: ^6.3.0     # 👈 This fixes the "Version Solving" error
+  firebase_auth: ^6.4.0
+  audioplayers: ^5.2.1
+  mobile_scanner: ^7.2.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/sounds/
+    - assets/assets/images/
