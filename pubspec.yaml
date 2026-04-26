@@ -26,4 +26,6 @@ flutter:
 
   assets:
     - assets/sounds/
-    - assets/assets/images/
+    - assets/images/ground_floor.png
+    - assets/images/first_floor.png
+    - assets/images/outside_view.png
