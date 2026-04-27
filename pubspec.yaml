@@ -25,7 +25,8 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/sounds/
+    - assets/sounds/siren.mp3
+    - assets/sounds/ping.mp3
     - assets/images/ground_floor.png
     - assets/images/first_floor.png
     - assets/images/outside_view.png

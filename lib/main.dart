@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'firebase_options.dart';
+import 'dart:async';
 
 // 📡 GLOBAL ACOUSTIC ENGINE: Singleton instance to prevent audio race conditions
 final AudioPlayer _globalPlayer = AudioPlayer();
@@ -121,16 +122,18 @@ class _GuestPortalState extends State<GuestPortal> {
           child: StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
                 .collection('incidents')
+                .where('location', isEqualTo: scannedRoom)
                 .where('status', isEqualTo: 'RESPONDING')
+                .orderBy('timestamp', descending: true) // 🕒 Latest Staff movement
                 .snapshots(),
             builder: (context, snapshot) {
-              double staffX = 450.0; 
-              double staffY = 300.0;
+              double staffX = 320.0; 
+              double staffY = 525.0;
 
               if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
                 final staffData = snapshot.data!.docs.first.data() as Map<String, dynamic>;
-                staffX = (staffData['staffX'] ?? 450.0).toDouble();
-                staffY = (staffData['staffY'] ?? 300.0).toDouble();
+                staffX = (staffData['staffX'] ?? 320.0).toDouble();
+                staffY = (staffData['staffY'] ?? 525.0).toDouble();
               }
 
               return Stack(
@@ -144,10 +147,13 @@ class _GuestPortalState extends State<GuestPortal> {
                       child: const Center(child: Text("MAP ASSET 404")),
                     ),
                   ),
-                  _tacticalMarker(top: 210, left: 320, icon: Icons.fire_extinguisher, color: Colors.orangeAccent),
-                  _tacticalMarker(top: 450, left: 150, icon: Icons.medical_services, color: Colors.redAccent),
-                  _tacticalMarker(top: 50, left: 800, icon: Icons.exit_to_app, color: Colors.greenAccent, isExit: true),
-                  _tacticalMarker(top: staffY, left: staffX, icon: Icons.person_pin_circle, color: Colors.cyanAccent, isStaff: true),
+                  _tacticalMarker(
+                    top: staffY, 
+                    left: staffX, 
+                    icon: Icons.person_pin_circle, 
+                    color: Colors.redAccent, 
+                    isStaff: true
+                  ),
                 ],
               );
             },
@@ -229,9 +235,11 @@ class _GuestPortalState extends State<GuestPortal> {
 
             // 📡 LIVE ETA BANNER: Isse guest ko staff ki location pata chalegi
             StreamBuilder<QuerySnapshot>(
+              // 🚀 Dynamic Stream: Sirf isi room ka active responding incident uthao
               stream: FirebaseFirestore.instance
                   .collection('incidents')
-                  .where('status', isEqualTo: 'RESPONDING')
+                  .where('location', isEqualTo: scannedRoom) // 🎯 Room filter
+                  .where('status', isEqualTo: 'RESPONDING')  // 🎯 Sirf responding wala
                   .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
@@ -347,7 +355,87 @@ class _StaffLoginGatewayState extends State<StaffLoginGateway> {
 
 class StaffCommandCenter extends StatelessWidget {
   const StaffCommandCenter({super.key});
+  // 📍 ROOM DIRECTORY: PNG pixels ke hisaab se coordinates
+  static const Map<String, Offset> roomDirectory = {
+    'G01': Offset(400.0, 420.0),
+    '101': Offset(400.0, 445.0),
+    'G12': Offset(900.0, 525.0),
+  };
+// 🛠️ INCIDENT CONTROL MODAL: ETA updates aur Resolution handle karne ke liye
+  void _openIncidentPanel(BuildContext context, DocumentSnapshot doc) {
+    final TextEditingController etaController = TextEditingController();
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: const Text("INCIDENT CONTROL", style: TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold)),
+        content: TextField(
+          controller: etaController,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            labelText: "Enter ETA (mins)", 
+            labelStyle: TextStyle(color: Colors.grey),
+            enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.cyanAccent)),
+          ),
+          keyboardType: TextInputType.number,
+        ),
+        actions: [
+          // 🚀 Action 1: Dispatch Staff with ETA
+          TextButton(
+            onPressed: () {
+              // 1. Target dhundo (e.g., G01 or 101)
+              final incidentData = doc.data() as Map<String, dynamic>;
+              String roomName = incidentData['location'] ?? 'G01';
+              Offset target = roomDirectory[roomName] ?? const Offset(400.0, 420.0);
 
+              // 2. Starting Point (Utility Room)
+              double currentX = 320.0;
+              double currentY = 525.0;
+
+              // 3. Initial Push to Firestore
+              doc.reference.update({
+                'status': 'RESPONDING',
+                'staffName': 'Rahul S.',
+                'eta': etaController.text,
+                'staffX': currentX,
+                'staffY': currentY,
+              });
+              
+              Navigator.pop(context);
+
+              // 🚀 THE TRACKER ENGINE: Har 300ms mein coordinates update honge
+              Timer.periodic(const Duration(milliseconds: 300), (timer) {
+                if ((currentX - target.dx).abs() > 4) {
+                  currentX += (target.dx > currentX) ? 6 : -6;
+                }
+                if ((currentY - target.dy).abs() > 4) {
+                  currentY += (target.dy > currentY) ? 6 : -6;
+                }
+
+                // 📡 Live Broadcast to Guest Portal
+                doc.reference.update({'staffX': currentX, 'staffY': currentY});
+
+                // 🏁 Destination reached?
+                if ((currentX - target.dx).abs() <= 5 && (currentY - target.dy).abs() <= 5) {
+                  timer.cancel();
+                }
+              });
+            },
+            child: const Text("SEND STAFF & ETA"),
+          ),
+          // ✅ Action 2: Resolve & Clear Dashboard
+          TextButton(
+            onPressed: () {
+              doc.reference.update({'status': 'RESOLVED'});
+              Navigator.pop(context);
+            },
+            child: const Text("RESOLVE & DISMISS", style: TextStyle(color: Colors.greenAccent)),
+          ),
+        ],
+      ),
+    );
+  }
   @override
   Widget build(BuildContext context) {
     if (FirebaseAuth.instance.currentUser == null) {
@@ -366,7 +454,11 @@ class StaffCommandCenter extends StatelessWidget {
         ],
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('incidents').orderBy('timestamp', descending: true).snapshots(),
+        // 🚀 Replace Line 369 with this:
+        stream: FirebaseFirestore.instance
+            .collection('incidents')
+            .where('status', isNotEqualTo: 'RESOLVED') 
+            .snapshots(),
         builder: (context, snapshot) {
           // 🔔 SIREN LOGIC: Fortified to prevent "already playing" crashes
           if (snapshot.hasData && snapshot.data!.docChanges.isNotEmpty) {
@@ -399,13 +491,8 @@ class StaffCommandCenter extends StatelessWidget {
                   subtitle: Text("LOC: ${data['location']}\nSTATUS: ${data['status']}", style: const TextStyle(fontSize: 10, color: Colors.grey)),
                   trailing: active 
                     ? ElevatedButton(
-                        onPressed: () => doc.reference.update({
-                          'status': 'RESPONDING', 
-                          'staffName': 'Rahul S.', 
-                          'eta': 5, 
-                          'staffX': 220.0, 
-                          'staffY': 180.0
-                        }),
+                        // 🚀 Replace the old onPressed with this single line:
+                        onPressed: () => _openIncidentPanel(context, doc),
                         child: const Text("ACKNOWLEDGE"),
                       )
                     : const Icon(Icons.verified, color: Colors.greenAccent),
